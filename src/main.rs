@@ -1,3 +1,5 @@
+use std::panic;
+
 use macroquad::prelude::*;
 use macroquad::window::Conf;
 
@@ -18,7 +20,7 @@ impl App {
     pub fn move_piece(&mut self, mouse_x: f32, mouse_y: f32) {
         let col = (mouse_x / 125.0) as usize;
         let row = 7 - (mouse_y / 125.0) as usize;
-        
+
         if col < 8 && row < 8 {
             match self.selected_piece {
                 None => {
@@ -27,8 +29,11 @@ impl App {
                     }
                 }
                 Some((from_col, from_row)) => {
-                    let piece = self.grid.cells[from_col][from_row].piece.take();
-                    self.grid.cells[col][row].piece = piece;
+                    if self.grid.is_move_legal([from_col,from_row],[col,row]){
+                        let piece = self.grid.cells[from_col][from_row].piece.take();
+                        self.grid.cells[col][row].piece = piece;
+                        self.selected_piece = None;
+                    }
                     self.selected_piece = None;
                 }
             }
@@ -87,103 +92,141 @@ pub struct Piece{
 }
 #[derive(Clone, Copy, Debug)]
 pub struct Cell {
-    name: [char; 2],
-    piece: Option<Piece>
+    position: [usize; 2],
+    piece: Option<Piece>,
 }
+
 #[derive(Debug)]
 pub struct Grid {
-    cells: [[Cell;8];8]
+    cells: [[Cell; 8]; 8],
 }
+
 impl Grid {
-    pub fn full_names(&mut self){
-        let letters = ['a','b','c','d','e','f','g','h'];
-        for i in 0..8{
-            for j in 0..8{
-                self.cells[i][j].name = [letters[i], std::char::from_u32(j as u32+1).unwrap()];
+    
+    pub fn is_move_legal(&self, from_position: [usize; 2],to_position: [usize; 2])-> bool{
+        if {
+            match self.find_cell(from_position).piece.unwrap().type_of_piece {
+                TypePiece::Pawn => self.is_pawn_move_legal(from_position, to_position),
+                TypePiece::Bishop => self.is_bishop_move_legal(from_position, to_position),
+                _ => false
+            }
+        }{
+            return true;
+        }
+        false
+    }
+    pub fn is_bishop_move_legal(&self, from_position: [usize; 2],to_position: [usize; 2])->bool{
+        todo!()
+    }
+    pub fn is_pawn_move_legal(&self, from_position: [usize; 2],to_position: [usize; 2])->bool{
+        
+        let direction = if self.find_cell(from_position).piece.unwrap().color == ChessColor::White { 1 } else { -1 };
+    
+        let row_diff = (to_position[1] as isize - from_position[1] as isize) * direction;
+        let col_diff = (to_position[0] as isize - from_position[0] as isize).abs();
+
+        match (row_diff, col_diff) {
+            (1, 0) => self.find_cell(to_position).piece.is_none(), // Simple movement
+            (2, 0) if from_position[1] == 1 || from_position[1] == 6 => self.find_cell(to_position).piece.is_none(), // Double initial movement 
+            (1, 1) => self.find_cell(to_position).piece.is_some(), // Diagonal capture
+            _ => false,
+        }
+    }
+
+    pub fn full_positions(&mut self) {
+        for i in 0..8 {
+            for j in 0..8 {
+                self.cells[i][j].position = [i, j];
             }
         }
     }
-    pub fn find_cell(&mut self, position: [char; 2]) -> Option<&mut Cell> {
-        let column = position[0] as usize - 'a' as usize;
-        let row = position[1] as usize - '1' as usize;
+    pub fn find_cell(&self, position: [usize; 2]) -> &Cell {
+        let [column, row] = position;
         
         if column < 8 && row < 8 {
-            Some(&mut self.cells[column][row])
+            &self.cells[column][row]
         } else {
-            None
+            panic!("Cell dont exist!");
         }
     }
+    pub fn find_cell_mut(&mut self, position: [usize; 2]) -> &mut Cell {
+        let [column, row] = position;
+        
+        if column < 8 && row < 8 {
+            &mut self.cells[column][row]
+        } else {
+            panic!("Cell dont exist!");
+        }
+    }
+
     pub fn initialize_pieces(&mut self) {
         let white_pieces = [
-            (TypePiece::Rook, 'a', 1),
-            (TypePiece::Knight, 'b', 1),
-            (TypePiece::Bishop, 'c', 1),
-            (TypePiece::Queen, 'd', 1),
-            (TypePiece::King, 'e', 1),
-            (TypePiece::Bishop, 'f', 1),
-            (TypePiece::Knight, 'g', 1),
-            (TypePiece::Rook, 'h', 1)
+            (TypePiece::Rook, [0, 0]),
+            (TypePiece::Knight, [1, 0]),
+            (TypePiece::Bishop, [2, 0]),
+            (TypePiece::Queen, [3, 0]),
+            (TypePiece::King, [4, 0]),
+            (TypePiece::Bishop, [5, 0]),
+            (TypePiece::Knight, [6, 0]),
+            (TypePiece::Rook, [7, 0]),
         ];
-        for &(type_of_piece, column, row) in white_pieces.iter() {
-            let position = [column, char::from_digit(row as u32, 10).unwrap()];
-            if let Some(cell) = self.find_cell(position) {
-                cell.piece = Some(Piece {
-                    type_of_piece,
-                    color: ChessColor::White,
-                });
-            }
+
+        for &(type_of_piece, position) in white_pieces.iter() {
+            let cell = self.find_cell_mut(position);
+            cell.piece = Some(Piece {
+                type_of_piece,
+                color: ChessColor::White,
+            });
+        
         }
 
-        for column in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].iter() {
-            let position = [*column, '2'];
-            if let Some(cell) = self.find_cell(position) {
-                cell.piece = Some(Piece {
-                    type_of_piece: TypePiece::Pawn,
-                    color: ChessColor::White,
-                });
-            }
-            println!("Inicializando peón blanco en {:?}", position);
+        for column in 0..8 {
+            let cell = self.find_cell_mut([column, 1]);
+            cell.piece = Some(Piece {
+                type_of_piece: TypePiece::Pawn,
+                color: ChessColor::White,
+            });
+        
         }
 
         let black_pieces = [
-            (TypePiece::Rook, 'a', 8),
-            (TypePiece::Knight, 'b', 8),
-            (TypePiece::Bishop, 'c', 8),
-            (TypePiece::Queen, 'd', 8),
-            (TypePiece::King, 'e', 8),
-            (TypePiece::Bishop, 'f', 8),
-            (TypePiece::Knight, 'g', 8),
-            (TypePiece::Rook, 'h', 8),
+            (TypePiece::Rook, [0, 7]),
+            (TypePiece::Knight, [1, 7]),
+            (TypePiece::Bishop, [2, 7]),
+            (TypePiece::Queen, [3, 7]),
+            (TypePiece::King, [4, 7]),
+            (TypePiece::Bishop, [5, 7]),
+            (TypePiece::Knight, [6, 7]),
+            (TypePiece::Rook, [7, 7]),
         ];
-        for &(type_of_piece, column, row) in black_pieces.iter() {
-            let position = [column, char::from_digit(row as u32, 10).unwrap()];
-            if let Some(cell) = self.find_cell(position) {
-                cell.piece = Some(Piece {
-                    type_of_piece,
-                    color: ChessColor::Black,
-                });
-                println!("Inicializando peón negro en {:?}", position);
-            }
+
+        for &(type_of_piece, position) in black_pieces.iter() {
+            let cell = self.find_cell_mut(position);
+            cell.piece = Some(Piece {
+                type_of_piece,
+                color: ChessColor::Black,
+            });
+        
         }
 
-        for column in ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].iter() {
-            let position = [*column, '7'];
-            if let Some(cell) = self.find_cell(position) {
-                cell.piece = Some(Piece {
-                    type_of_piece: TypePiece::Pawn,
-                    color: ChessColor::Black,
-                });
-            }
+        for column in 0..8 {
+            let cell = self.find_cell_mut([column, 6]);
+            cell.piece = Some(Piece {
+                type_of_piece: TypePiece::Pawn,
+                color: ChessColor::Black,
+            });
+        
         }
     }
-    
-    pub fn new()->Self{
-        let cells = [[Cell{name:['a', '0'], piece: None};8];8];
-        let mut grid = Grid{cells}; 
-        grid.full_names();
+
+    pub fn new() -> Self {
+        let mut cells = [[Cell { position: [0, 0], piece: None }; 8]; 8];
+        let mut grid = Grid { cells };
+        grid.full_positions();
         grid.initialize_pieces();
         grid
     }
+
     pub fn print_board(&self) {
         for i in 0..8 {
             for j in 0..8 {
@@ -196,8 +239,14 @@ impl Grid {
             println!();
         }
     }
-    
+
+    pub fn position_to_chess_notation(position: [usize; 2]) -> String {
+        let column = (position[0] + 'a' as usize) as u8 as char;
+        let row = (position[1] + 1).to_string();
+        format!("{}{}", column, row)
+    }
 }
+
 
 async fn load_textures() -> std::collections::HashMap<Piece, Texture2D> {
     let mut textures = std::collections::HashMap::new();
