@@ -17,9 +17,9 @@ impl App {
         }
     }
 
-    pub fn move_piece(&mut self, mouse_x: f32, mouse_y: f32) {
-        let col = (mouse_x / 112.5) as usize;
-        let row = 7 - (mouse_y / 112.5) as usize;
+    pub fn move_piece(&mut self, mouse_x: f32, mouse_y: f32, cell_size: f32, offset_x: f32, offset_y: f32) {
+        let col = ((mouse_x - offset_x) / cell_size) as usize;
+        let row = 7 - ((mouse_y - offset_y) / cell_size) as usize;
 
         if col < 8 && row < 8 {
             match self.selected_piece {
@@ -29,7 +29,7 @@ impl App {
                     }
                 }
                 Some((from_col, from_row)) => {
-                    if self.grid.is_move_legal([from_col,from_row],[col,row]){
+                    if self.grid.is_move_legal([from_col, from_row], [col, row]) {
                         let piece = self.grid.cells[from_col][from_row].piece.take();
                         self.grid.cells[col][row].piece = piece;
                         self.selected_piece = None;
@@ -40,11 +40,11 @@ impl App {
         }
     }
 
-    pub fn draw(&self, textures: &std::collections::HashMap<Piece, Texture2D>, cell_size: f32) {
+    pub fn draw(&self, textures: &std::collections::HashMap<Piece, Texture2D>, cell_size: f32, offset_x: f32, offset_y: f32) {
         for i in 0..=7 {
             for j in 0..=7 {
-                let x = cell_size * i as f32;
-                let y = cell_size * j as f32;
+                let x = offset_x + cell_size * i as f32;
+                let y = offset_y + cell_size * j as f32;
 
                 if (i + j) % 2 == 0 {
                     draw_rectangle(x, y, cell_size, cell_size, WHITE);
@@ -59,8 +59,8 @@ impl App {
                 let cell = &self.grid.cells[i][j];
                 if let Some(piece) = cell.piece {
                     if let Some(texture) = textures.get(&piece) {
-                        let x = cell_size * i as f32;
-                        let y = cell_size * (7 - j) as f32;
+                        let x = offset_x + cell_size * i as f32;
+                        let y = offset_y + cell_size * (7 - j) as f32;
                         draw_texture_ex(
                             texture,
                             x,
@@ -77,8 +77,8 @@ impl App {
         }
 
         if let Some((col, row)) = self.selected_piece {
-            let x = cell_size * col as f32;
-            let y = cell_size * (7 - row) as f32;
+            let x = offset_x + cell_size * col as f32;
+            let y = offset_y + cell_size * (7 - row) as f32;
             draw_rectangle_lines(x, y, cell_size, cell_size, 3.0, YELLOW);
         }
     }
@@ -432,17 +432,19 @@ async fn main(){
     loop {
         clear_background(WHITE);
         
-        let screen_width = screen_width();
-        let screen_height = screen_height();
-        let cell_size = screen_width.min(screen_height) / 8.0;
+        let (screen_width, screen_height) = (screen_width(), screen_height());
+        let cell_size = (screen_width.min(screen_height)) / 8.0;
+        let offset_x = (screen_width - cell_size * 8.0) / 2.0;
+        let offset_y = (screen_height - cell_size * 8.0) / 2.0;
+
+        app.draw(&textures, cell_size, offset_x, offset_y);
 
         if is_mouse_button_pressed(MouseButton::Left) {
             let (mouse_x, mouse_y) = mouse_position();
-            app.move_piece(mouse_x, mouse_y);
+            app.move_piece(mouse_x, mouse_y, cell_size, offset_x, offset_y);
         }
 
-        app.draw(&textures, cell_size);
-
+        
         next_frame().await
     }
 }
