@@ -18,8 +18,8 @@ impl App {
     }
 
     pub fn move_piece(&mut self, mouse_x: f32, mouse_y: f32) {
-        let col = (mouse_x / 125.) as usize;
-        let row = 7 - (mouse_y / 125.) as usize;
+        let col = (mouse_x / 112.5) as usize;
+        let row = 7 - (mouse_y / 112.5) as usize;
 
         if col < 8 && row < 8 {
             match self.selected_piece {
@@ -41,17 +41,17 @@ impl App {
     }
 
     pub fn draw(&self, textures: &std::collections::HashMap<Piece, Texture2D>) {
-        let cell_size = 125.;
+        let cell_size = 112.5;
 
         for i in 0..=7 {
             for j in 0..=7 {
-                let x = 125. * i as f32;
-                let y = 125. * j as f32;
+                let x = 112.5 * i as f32;
+                let y = 112.5 * j as f32;
         
                 if (i + j) % 2 == 0 {
-                    draw_rectangle(x, y, 125., 125., WHITE);
+                    draw_rectangle(x, y, 112.5, 112.5, WHITE);
                 } else {
-                    draw_rectangle(x, y, 125., 125., GRAY);
+                    draw_rectangle(x, y, 112.5, 112.5, GRAY);
                 }
             }
         }
@@ -79,9 +79,9 @@ impl App {
         }
 
         if let Some((col, row)) = self.selected_piece {
-            let x = 125. * col as f32;
-            let y = 125. * (7 - row) as f32;
-            draw_rectangle_lines(x, y, 125., 125., 3.0, YELLOW);
+            let x = 112.5 * col as f32;
+            let y = 112.5 * (7 - row) as f32;
+            draw_rectangle_lines(x, y, 112.5, 112.5, 3.0, YELLOW);
         }
     }
 }
@@ -430,7 +430,6 @@ async fn load_textures() -> std::collections::HashMap<Piece, Texture2D> {
 async fn main(){
     let mut app = App::new();
     let textures = load_textures().await;
-    app.grid.print_board();
     loop {
         clear_background(WHITE);
         
@@ -448,8 +447,8 @@ async fn main(){
 
 fn conf()-> Conf{
     Conf{
-        window_width:1000,
-        window_height:1000,
+        window_width:900,
+        window_height:900,
         window_resizable:false,
         window_title:"Chess".to_string(),
         ..Default::default()
