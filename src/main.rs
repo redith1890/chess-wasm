@@ -18,8 +18,8 @@ impl App {
     }
 
     pub fn move_piece(&mut self, mouse_x: f32, mouse_y: f32) {
-        let col = (mouse_x / 125.0) as usize;
-        let row = 7 - (mouse_y / 125.0) as usize;
+        let col = (mouse_x / 125.) as usize;
+        let row = 7 - (mouse_y / 125.) as usize;
 
         if col < 8 && row < 8 {
             match self.selected_piece {
@@ -41,15 +41,17 @@ impl App {
     }
 
     pub fn draw(&self, textures: &std::collections::HashMap<Piece, Texture2D>) {
+        let cell_size = 125.;
+
         for i in 0..=7 {
             for j in 0..=7 {
-                let x = 125.0 * i as f32;
-                let y = 125.0 * j as f32;
+                let x = 125. * i as f32;
+                let y = 125. * j as f32;
         
                 if (i + j) % 2 == 0 {
-                    draw_rectangle(x, y, 125.0, 125.0, WHITE);
+                    draw_rectangle(x, y, 125., 125., WHITE);
                 } else {
-                    draw_rectangle(x, y, 125.0, 125.0, GRAY);
+                    draw_rectangle(x, y, 125., 125., GRAY);
                 }
             }
         }
@@ -59,18 +61,27 @@ impl App {
                 let cell = &self.grid.cells[i][j];
                 if let Some(piece) = cell.piece {
                     if let Some(texture) = textures.get(&piece) {
-                        let x = 125.0 * i as f32;
-                        let y = 125.0 * (7 - j) as f32;
-                        draw_texture(texture, x, y, WHITE);
+                        let x = cell_size * i as f32;
+                        let y = cell_size * (7 - j) as f32;
+                        draw_texture_ex(
+                            texture,
+                            x,
+                            y,
+                            WHITE,
+                            DrawTextureParams {
+                                dest_size: Some(Vec2::new(cell_size, cell_size)), 
+                                ..Default::default()
+                            }
+                        );
                     }
                 }
             }
         }
 
         if let Some((col, row)) = self.selected_piece {
-            let x = 125.0 * col as f32;
-            let y = 125.0 * (7 - row) as f32;
-            draw_rectangle_lines(x, y, 125.0, 125.0, 3.0, YELLOW);
+            let x = 125. * col as f32;
+            let y = 125. * (7 - row) as f32;
+            draw_rectangle_lines(x, y, 125., 125., 3.0, YELLOW);
         }
     }
 }
@@ -85,6 +96,14 @@ pub enum TypePiece{
 pub enum ChessColor{
     White,Black
 }
+impl ChessColor{
+    pub fn opposite(&self)-> ChessColor{
+        match self {
+            ChessColor::White => ChessColor::Black,
+            ChessColor::Black => ChessColor::White
+        }
+    }
+}
 #[derive(Clone, Copy, Debug,PartialEq, Eq, Hash)]
 pub struct Piece{
     type_of_piece: TypePiece,
@@ -96,7 +115,7 @@ pub struct Cell {
     piece: Option<Piece>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Grid {
     cells: [[Cell; 8]; 8],
 }
@@ -108,15 +127,142 @@ impl Grid {
             match self.find_cell(from_position).piece.unwrap().type_of_piece {
                 TypePiece::Pawn => self.is_pawn_move_legal(from_position, to_position),
                 TypePiece::Bishop => self.is_bishop_move_legal(from_position, to_position),
-                _ => false
+                TypePiece::Rook => self.is_rook_move_legal(from_position, to_position),
+                TypePiece::Queen => self.is_bishop_move_legal(from_position, to_position) || self.is_rook_move_legal(from_position, to_position),
+                TypePiece::King => self.is_king_move_legal(from_position,to_position),
+                TypePiece::Knight => self.is_knight_move_legal(from_position,to_position),
             }
-        }{
+        } && !self.does_move_put_king_in_check(from_position, to_position)
+        {
             return true;
         }
         false
     }
+    pub fn does_move_put_king_in_check(&self, from_position: [usize; 2], to_position: [usize; 2]) -> bool {
+        let mut temp_board = self.clone();
+    
+        let piece = temp_board.cells[from_position[0]][from_position[1]].piece.take();
+        temp_board.cells[to_position[0]][to_position[1]].piece = piece;
+    
+        let king_position = temp_board.find_king_position(temp_board.cells[to_position[0]][to_position[1]].piece.unwrap().color);
+    
+        temp_board.is_square_attacked(king_position)
+    }
+    fn is_square_attacked(&self, position: [usize; 2]) -> bool {
+        let color = self.cells[position[0]][position[1]].piece.unwrap().color.opposite();
+        for col in 0..8 {
+            for row in 0..8 {
+                if let Some(piece) = self.cells[col][row].piece {
+                    if piece.color == color && self.is_move_legal([col, row], position) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    }
+    
+    pub fn find_king_position(&self, color: ChessColor) -> [usize;2] {
+        for col in 0..8 {
+            for row in 0..8 {
+                if let Some(piece) = &self.cells[col][row].piece {
+                    if piece.type_of_piece == TypePiece::King && piece.color == color {
+                        return [col,row];
+                    }
+                }
+            }
+        }
+        panic!("King not found on the board!"); 
+    }
+    pub fn is_knight_move_legal(&self, from_position: [usize; 2], to_position: [usize; 2])->bool{
+        let row_diff = (to_position[1] as isize - from_position[1] as isize).abs();
+        let col_diff = (to_position[0] as isize - from_position[0] as isize).abs();
+        if col_diff == 2 || row_diff == 2 {
+           if col_diff == 1 || row_diff == 1 {
+                if self.find_cell(to_position).piece.is_none(){
+                    return true;
+                }
+                if self.find_cell(from_position).piece.unwrap().color != self.find_cell(to_position).piece.unwrap().color{
+                    return  true;
+                }
+           }
+        } 
+        false
+    }
+    pub fn is_king_move_legal(&self, from_position: [usize; 2], to_position: [usize; 2])-> bool{
+        let row_diff = to_position[1] as isize - from_position[1] as isize;
+        let col_diff = to_position[0] as isize - from_position[0] as isize;
+        if col_diff.abs() <= 1 && row_diff.abs() <= 1{
+            if self.find_cell(to_position).piece.is_none(){
+                return true;
+            }
+            else {
+                if self.find_cell(from_position).piece.unwrap().color != self.find_cell(to_position).piece.unwrap().color{
+                    return  true;
+                }
+                else {
+                    return false;
+                }
+            }
+        } 
+        false
+    }
+    pub fn is_path_clear(&self, from_position: [usize; 2], to_position: [usize; 2]) -> bool {
+        let mut row = from_position[1] as isize;
+        let mut col = from_position[0] as isize;
+        let row_diff = to_position[1] as isize - row;
+        let col_diff = to_position[0] as isize - col;
+
+        let row_step = if row_diff == 0 { 0 } else { row_diff / row_diff.abs() };
+        let col_step = if col_diff == 0 { 0 } else { col_diff / col_diff.abs() };
+
+        row += row_step;
+        col += col_step;
+
+        while row != to_position[1] as isize || col != to_position[0] as isize {
+            if self.find_cell([col as usize, row as usize]).piece.is_some() {
+                return false;
+            }
+            row += row_step;
+            col += col_step;
+        }
+
+        true
+    }
+    pub fn is_rook_move_legal(&self, from_position: [usize; 2], to_position: [usize; 2])->bool{
+        if (from_position[0] == to_position[0] || from_position[1] == to_position[1]) && self.is_path_clear(from_position, to_position){
+            if self.find_cell(to_position).piece.is_none(){
+                return true;
+            }
+            else {
+                if self.find_cell(from_position).piece.unwrap().color != self.find_cell(to_position).piece.unwrap().color{
+                    return  true;
+                }
+            }
+            
+        }
+            
+        false
+    }
     pub fn is_bishop_move_legal(&self, from_position: [usize; 2],to_position: [usize; 2])->bool{
-        todo!()
+        let row_diff = to_position[1] as isize - from_position[1] as isize;
+        let col_diff = to_position[0] as isize - from_position[0] as isize;
+        if (row_diff.abs() == col_diff.abs()) && self.is_path_clear(from_position, to_position){
+            if self.find_cell(to_position).piece.is_none(){
+                return true;
+            }
+            else{
+                if self.find_cell(from_position).piece.unwrap().color != self.find_cell(to_position).piece.unwrap().color{
+                    return  true;
+                }
+                else{
+                    return false;
+                }
+            }
+        }
+        else {
+            false
+        }
     }
     pub fn is_pawn_move_legal(&self, from_position: [usize; 2],to_position: [usize; 2])->bool{
         
@@ -126,9 +272,9 @@ impl Grid {
         let col_diff = (to_position[0] as isize - from_position[0] as isize).abs();
 
         match (row_diff, col_diff) {
-            (1, 0) => self.find_cell(to_position).piece.is_none(), // Simple movement
-            (2, 0) if from_position[1] == 1 || from_position[1] == 6 => self.find_cell(to_position).piece.is_none(), // Double initial movement 
-            (1, 1) => self.find_cell(to_position).piece.is_some(), // Diagonal capture
+            (1, 0) => self.find_cell(to_position).piece.is_none()&& self.is_path_clear(from_position, to_position), // Simple movement
+            (2, 0) if from_position[1] == 1 || from_position[1] == 6 => self.find_cell(to_position).piece.is_none()&& self.is_path_clear(from_position, to_position), // Double initial movement 
+            (1, 1) => self.find_cell(to_position).piece.is_some() && self.find_cell(to_position).piece.unwrap().color != self.find_cell(from_position).piece.unwrap().color, // Diagonal capture
             _ => false,
         }
     }
@@ -251,18 +397,18 @@ impl Grid {
 async fn load_textures() -> std::collections::HashMap<Piece, Texture2D> {
     let mut textures = std::collections::HashMap::new();
 
-    let white_pawn = load_texture("img/white-pawn.png").await.unwrap();
-    let black_pawn = load_texture("img/black-pawn.png").await.unwrap();
-    let white_rook = load_texture("img/white-rook.png").await.unwrap();
-    let black_rook = load_texture("img/black-rook.png").await.unwrap();
-    let white_bishop = load_texture("img/white-bishop.png").await.unwrap();
-    let black_bishop = load_texture("img/black-bishop.png").await.unwrap();
-    let white_queen = load_texture("img/white-queen.png").await.unwrap();
-    let black_queen = load_texture("img/black-queen.png").await.unwrap();
-    let white_knight = load_texture("img/white-knight.png").await.unwrap();
-    let black_knight = load_texture("img/black-knight.png").await.unwrap();
-    let white_king = load_texture("img/white-king.png").await.unwrap();
-    let black_king = load_texture("img/black-king.png").await.unwrap();
+    let white_pawn = load_texture("newimg/white-pawn.png").await.unwrap();
+    let black_pawn = load_texture("newimg/black-pawn.png").await.unwrap();
+    let white_rook = load_texture("newimg/white-rook.png").await.unwrap();
+    let black_rook = load_texture("newimg/black-rook.png").await.unwrap();
+    let white_bishop = load_texture("newimg/white-bishop.png").await.unwrap();
+    let black_bishop = load_texture("newimg/black-bishop.png").await.unwrap();
+    let white_queen = load_texture("newimg/white-queen.png").await.unwrap();
+    let black_queen = load_texture("newimg/black-queen.png").await.unwrap();
+    let white_knight = load_texture("newimg/white-knight.png").await.unwrap();
+    let black_knight = load_texture("newimg/black-knight.png").await.unwrap();
+    let white_king = load_texture("newimg/white-king.png").await.unwrap();
+    let black_king = load_texture("newimg/black-king.png").await.unwrap();
     
     textures.insert(Piece { type_of_piece: TypePiece::Pawn, color: ChessColor::White }, white_pawn);
     textures.insert(Piece { type_of_piece: TypePiece::Pawn, color: ChessColor::Black }, black_pawn);
@@ -278,42 +424,6 @@ async fn load_textures() -> std::collections::HashMap<Piece, Texture2D> {
     textures.insert(Piece { type_of_piece: TypePiece::King, color: ChessColor::Black }, black_king);
     textures
 }
-
-fn move_piece(grid: &mut Grid, textures: &std::collections::HashMap<Piece, Texture2D>) {
-    static mut SELECTED_PIECE: Option<(usize, usize)> = None;
-
-    if is_mouse_button_pressed(MouseButton::Left) {
-        let (mouse_x, mouse_y) = mouse_position();
-        let col = (mouse_x / 125.0) as usize;
-        let row = 7 - (mouse_y / 125.0) as usize;
-
-        if col < 8 && row < 8 {
-            unsafe {
-                match SELECTED_PIECE {
-                    None => {
-                        if grid.cells[col][row].piece.is_some() {
-                            SELECTED_PIECE = Some((col, row));
-                        }
-                    }
-                    Some((from_col, from_row)) => {
-                        let piece = grid.cells[from_col][from_row].piece.take();
-                        grid.cells[col][row].piece = piece;
-                        SELECTED_PIECE = None;
-                    }
-                }
-            }
-        }
-    }
-
-    unsafe {
-        if let Some((col, row)) = SELECTED_PIECE {
-            let x = 125.0 * col as f32;
-            let y = 125.0 * (7 - row) as f32;
-            draw_rectangle_lines(x, y, 125.0, 125.0, 3.0, YELLOW);
-        }
-    }
-}
-
 
 
 #[macroquad::main(conf())]
