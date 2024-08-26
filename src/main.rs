@@ -40,22 +40,20 @@ impl App {
         }
     }
 
-    pub fn draw(&self, textures: &std::collections::HashMap<Piece, Texture2D>) {
-        let cell_size = 112.5;
-
+    pub fn draw(&self, textures: &std::collections::HashMap<Piece, Texture2D>, cell_size: f32) {
         for i in 0..=7 {
             for j in 0..=7 {
-                let x = 112.5 * i as f32;
-                let y = 112.5 * j as f32;
-        
+                let x = cell_size * i as f32;
+                let y = cell_size * j as f32;
+
                 if (i + j) % 2 == 0 {
-                    draw_rectangle(x, y, 112.5, 112.5, WHITE);
+                    draw_rectangle(x, y, cell_size, cell_size, WHITE);
                 } else {
-                    draw_rectangle(x, y, 112.5, 112.5, GRAY);
+                    draw_rectangle(x, y, cell_size, cell_size, GRAY);
                 }
             }
         }
-        
+
         for i in 0..=7 {
             for j in 0..=7 {
                 let cell = &self.grid.cells[i][j];
@@ -69,9 +67,9 @@ impl App {
                             y,
                             WHITE,
                             DrawTextureParams {
-                                dest_size: Some(Vec2::new(cell_size, cell_size)), 
+                                dest_size: Some(Vec2::new(cell_size, cell_size)),
                                 ..Default::default()
-                            }
+                            },
                         );
                     }
                 }
@@ -79,11 +77,12 @@ impl App {
         }
 
         if let Some((col, row)) = self.selected_piece {
-            let x = 112.5 * col as f32;
-            let y = 112.5 * (7 - row) as f32;
-            draw_rectangle_lines(x, y, 112.5, 112.5, 3.0, YELLOW);
+            let x = cell_size * col as f32;
+            let y = cell_size * (7 - row) as f32;
+            draw_rectangle_lines(x, y, cell_size, cell_size, 3.0, YELLOW);
         }
     }
+
 }
 pub enum Turn{
     White,Black
@@ -433,12 +432,16 @@ async fn main(){
     loop {
         clear_background(WHITE);
         
+        let screen_width = screen_width();
+        let screen_height = screen_height();
+        let cell_size = screen_width.min(screen_height) / 8.0;
+
         if is_mouse_button_pressed(MouseButton::Left) {
             let (mouse_x, mouse_y) = mouse_position();
             app.move_piece(mouse_x, mouse_y);
         }
 
-        app.draw(&textures);
+        app.draw(&textures, cell_size);
 
         next_frame().await
     }
