@@ -1,11 +1,10 @@
-
 use std::panic;
 
 use macroquad::prelude::*;
 use macroquad::window::Conf;
 
 pub struct App {
-    turn: Turn,
+    turn: ChessColor,
     grid: Grid,
     selected_piece: Option<(usize, usize)>,
     log: Vec<([usize;2], [usize;2])>
@@ -13,13 +12,19 @@ pub struct App {
 impl App {
     pub fn new() -> Self {
         App {
-            turn: Turn::White,
+            turn: ChessColor::White,
             grid: Grid::new(),
             selected_piece: None,
             log: Vec::new()
         }
     }
-
+    pub fn default(&mut self){
+        self.grid = Grid::new();
+        self.log = Vec::new();
+        self.turn = ChessColor::White;
+        self.selected_piece = None;
+    }
+    
     pub fn move_piece(
         &mut self,
         mouse_x: f32,
@@ -35,39 +40,43 @@ impl App {
             match self.selected_piece {
                 None => {
                     if self.grid.cells[col][row].piece.is_some() {
-                        self.selected_piece = Some((col, row));
+                        if self.grid.cells[col][row].piece.unwrap().color == self.turn{
+                            self.selected_piece = Some((col, row));
+                        }
                     }
                 }
                 Some((from_col, from_row)) => {
                     if self.is_move_castling([from_col, from_row], [col, row]) {
-                        // Mover el rey
                         let king = self.grid.cells[from_col][from_row].piece.take();
                         self.grid.cells[col][row].piece = king;
     
-                        // Mover la torre
                         let (rook_from_col, rook_to_col) = if col == 6 {
-                            (7, 5) // Enroque corto
+                            (7, 5) 
                         } else {
-                            (0, 2) // Enroque largo
+                            (0, 2) 
                         };
                         let rook = self.grid.cells[rook_from_col][row].piece.take();
                         self.grid.cells[rook_to_col][row].piece = rook;
     
-                        // Registrar el movimiento del rey
                         self.add_log(([from_col, from_row], [col, row]));
-                        // Registrar el movimiento de la torre
                         self.add_log(([rook_from_col, row], [rook_to_col, row]));
+                        self.turn = self.turn.opposite();
+                        
                     } 
                         else if self.grid.is_move_legal([from_col, from_row], [col, row]) {
                         let piece = self.grid.cells[from_col][from_row].piece.take();
                         self.grid.cells[col][row].piece = piece;
                         self.selected_piece = None;
                         self.add_log(([from_col, from_row], [col, row]));
+                        self.turn = self.turn.opposite();
                     }
                     
                     self.selected_piece = None;
                 }
             }
+        }
+        if self.is_checkmate(ChessColor::White) || self.is_checkmate(ChessColor::Black){
+            self.default();
         }
     }
     pub fn add_log(&mut self, position: ([usize;2],[usize;2])){
@@ -124,6 +133,29 @@ impl App {
             draw_rectangle_lines(x, y, cell_size, cell_size, 3.0, YELLOW);
         }
     }
+    pub fn is_checkmate(&self, color: ChessColor) -> bool {
+        let king_position = self.grid.find_king_position(color);
+        if !self.grid.is_square_attacked(king_position, color) {
+            return false; 
+        }
+
+        for from_col in 0..8 {
+            for from_row in 0..8 {
+                if let Some(piece) = self.grid.cells[from_col][from_row].piece {
+                    if piece.color == color {
+                        for to_col in 0..8 {
+                            for to_row in 0..8 {
+                                if self.grid.is_move_legal([from_col, from_row], [to_col, to_row]) {
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        true
+    }
     pub fn has_king_moved(&self, color: ChessColor) -> bool {
         let king_start_row = if color == ChessColor::White { 0 } else { 7 };
         for &(from, _) in &self.log {
@@ -165,12 +197,15 @@ impl App {
                     return false;
                 }
     
-                let attacking_color = piece.color.opposite();
                 let step: i32 = if king_end_col > king_start_col { 1 } else { -1 };
                 for col in (std::cmp::min(king_start_col, king_end_col)..=std::cmp::max(king_start_col, king_end_col)).step_by(step.abs() as usize) {
-                    if self.grid.is_square_attacked([col, king_row], attacking_color) {
+                    if self.grid.is_square_attacked([col, king_row], piece.color) {
                         return false;
                     }
+                }
+    
+                if self.grid.is_square_attacked([king_end_col, king_row], piece.color) {
+                    return false;
                 }
     
                 return true;
@@ -179,10 +214,7 @@ impl App {
         false
     }
 }
-pub enum Turn {
-    White,
-    Black,
-}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum TypePiece {
     King,
@@ -222,23 +254,6 @@ pub struct Grid {
 }
 
 impl Grid {
-    // pub fn is_move_castling(&self, from_position: [usize; 2], to_position: [usize; 2]) -> bool {
-    //     if self.find_cell(from_position).piece.is_some(){
-    //         if self.find_cell(from_position).piece.unwrap().type_of_piece == TypePiece::King{
-    //             match self.find_cell(from_position).piece.unwrap().color {
-    //                 ChessColor::Black => if to_position == [6,7] || to_position == [2,7]{return true;}  else{return false;}
-    //                 ChessColor::White => if to_position == [6,0] || to_position == [2,0]{return true;}  else{return false;}
-    //             }
-    //         }
-    //         else {
-    //             false
-    //         }
-    //     }
-    //     else {
-    //         false
-    //     }
-    // }
-    
     pub fn is_move_legal(&self, from_position: [usize; 2], to_position: [usize; 2]) -> bool {
         if {
             match self.find_cell(from_position).piece.unwrap().type_of_piece {
@@ -258,28 +273,24 @@ impl Grid {
         }
         false
     }
-    pub fn does_move_put_king_in_check(
-        &self,
-        from_position: [usize; 2],
-        to_position: [usize; 2],
-    ) -> bool {
+    pub fn does_move_put_king_in_check(&self, from_position: [usize; 2], to_position: [usize; 2],) -> bool {
         let mut temp_board = self.clone();
-
+        
         let piece = temp_board.cells[from_position[0]][from_position[1]]
             .piece
             .take();
         temp_board.cells[to_position[0]][to_position[1]].piece = piece;
-
-        let king_position = temp_board.find_king_position(
-            temp_board.cells[to_position[0]][to_position[1]]
-                .piece
-                .unwrap()
-                .color,
-        );
-
-        temp_board.is_square_attacked(king_position, self.find_cell(king_position).piece.unwrap().color)
+    
+        let king_color = temp_board.cells[to_position[0]][to_position[1]]
+            .piece
+            .unwrap()
+            .color;
+        let king_position = temp_board.find_king_position(king_color);
+        
+        temp_board.is_square_attacked(king_position, king_color)
     }
-    pub fn is_square_attacked(&self, position: [usize; 2], attacking_color: ChessColor) -> bool {
+    pub fn is_square_attacked(&self, position: [usize; 2], defending_color: ChessColor) -> bool {
+        let attacking_color = defending_color.opposite();
         for col in 0..8 {
             for row in 0..8 {
                 if let Some(piece) = self.cells[col][row].piece {
@@ -516,7 +527,7 @@ impl Grid {
     }
 
     pub fn new() -> Self {
-        let mut cells = [[Cell {
+        let cells = [[Cell {
             position: [0, 0],
             piece: None,
         }; 8]; 8];
